@@ -113,6 +113,21 @@ async def index(request: Request):
   <h1>Docker <span>MCP</span> Server</h1>
   <p class="subtitle">Model Context Protocol server for Docker management</p>
   <div class="status"><span class="dot"></span> Running on {SERVER_HOST}:{SERVER_PORT}</div>
+  
+  <div class="card">
+    <h2>Connection VSCode (Continue)</h2>
+    <pre><span class="comment">// .continue/mcpServers/DockerMCP.yaml</span>
+<span class="key">name</span>: <span class="str">DockerMCP</span>
+<span class="key">version</span>: <span class="str">0.0.1</span>
+<span class="key">schema</span>: <span class="str">v1</span>
+<span class="key">mcpServers</span>:
+  - <span class="key">name</span>: <span class="str">"DockerMCP"</span>
+    <span class="key">type</span>: <span class="str">"streamable-http"</span>
+    <span class="key">url</span>: <span class="str">"http://{SERVER_HOST}:{SERVER_PORT}/mcp"</span>
+    <span class="key">requestOptions</span>:
+      <span class="key">headers</span>:
+        <span class="key">Authorization</span>: <span class="str">"Bearer your-token"</span></pre>
+</div>
 
   <div class="card">
     <h2>Connection Claude Desktop</h2>
