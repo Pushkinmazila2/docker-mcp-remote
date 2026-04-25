@@ -1,13 +1,39 @@
 services:
-  docker-mcp:
-    build: .
+  mcp-docker-manager:
+    image: ghcr.io/pushkinmazila2/docker-mcp-remout:latest
+    container_name: mcp-docker-manager
+    restart: unless-stopped
+    
     ports:
       - "8000:8000"
+    
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
+    
     environment:
-      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-sdojrtnosifsm}
-      - SERVER_HOST=${SERVER_HOST:-your-server}
-      - SERVER_PORT=${SERVER_PORT:-8000}
-      - EXEC_WHITELIST=ls,ps,df,cat,env,top,uptime
+      - MCP_AUTH_TOKEN=my0token0forever
+      - SERVER_HOST=myserver
+      - SERVER_PORT=8000
+      - EXEC_WHITELIST=ls,ps,df,top,npm,python
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
