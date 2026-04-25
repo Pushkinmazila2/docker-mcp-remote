@@ -36,7 +36,16 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
                     headers={"WWW-Authenticate": "Bearer"},
                 )
         return await call_next(request)
-
+        
+# ---------------------------------------------------------------------------
+# Logging Startup Info
+# ---------------------------------------------------------------------------
+print("\n" + "="*50)
+print("🚀 DOCKER MCP SERVER STARTED")
+print(f"🌍 URL: http://{SERVER_HOST}:{SERVER_PORT}/mcp")
+print(f"🔑 AUTH TOKEN: {AUTH_TOKEN if AUTH_TOKEN else 'DISABLED'}")
+print(f"🛡️  WHITELIST: {', '.join(EXEC_WHITELIST) if EXEC_WHITELIST else 'ALL'}")
+print("="*50 + "\n")
 
 # ---------------------------------------------------------------------------
 # FastMCP server
