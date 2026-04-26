@@ -1,5 +1,6 @@
 import os
 import json
+import secrets
 import docker
 import docker.errors
 from mcp.server.fastmcp import FastMCP
@@ -11,6 +12,9 @@ from starlette.responses import JSONResponse, HTMLResponse
 AUTH_TOKEN = os.environ.get("MCP_AUTH_TOKEN", "")
 SERVER_HOST = os.environ.get("SERVER_HOST", "your-server")
 SERVER_PORT = os.environ.get("SERVER_PORT", "8000")
+
+if not AUTH_TOKEN:
+    AUTH_TOKEN = secrets.token_urlsafe(32)
 
 
 _whitelist_env = os.environ.get("EXEC_WHITELIST", "")
@@ -27,14 +31,14 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path in ("/health", "/"):
             return await call_next(request)
-        if AUTH_TOKEN:
-            auth_header = request.headers.get("Authorization", "")
-            if not auth_header.startswith("Bearer ") or auth_header[7:] != AUTH_TOKEN:
-                return JSONResponse(
-                    status_code=401,
-                    content={"error": "Unauthorized"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+        
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer ") or \
+           not secrets.compare_digest(auth_header[7:], AUTH_TOKEN):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Invalid or missing token"},
+            )
         return await call_next(request)
         
 # ---------------------------------------------------------------------------
