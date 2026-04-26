@@ -1,7 +1,7 @@
 FROM python:3.12-slim-bookworm
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    curl coreutils binutils\
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir mcp[cli] docker uvicorn starlette psutil
