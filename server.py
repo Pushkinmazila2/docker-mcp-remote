@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
 
+AUTH_TOKEN = os.environ.get("MCP_AUTH_TOKEN", "")
 SERVER_HOST = os.environ.get("SERVER_HOST", "your-server")
 SERVER_PORT = os.environ.get("SERVER_PORT", "8000")
 SAFE_MOUNT_DIR = os.environ.get("SAFE_MOUNT_DIR", "/app/data")
