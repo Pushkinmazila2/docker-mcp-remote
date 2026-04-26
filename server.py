@@ -982,31 +982,30 @@ def list_directory(container_name: str, path: str = "/") -> str:
 # ===========================================================================
 
 @mcp.tool()
-def get_identity_info() -> dict:
+def get_host_identity() -> dict:
     """
-    Get detailed information about the server's identity, network, and environment.
-    Helps determine which physical or virtual host the MCP server is running on.
+    Get information about the PHYSICAL HOST (node) where this containers are running.
+    Retrieves data via Docker Engine API.
     """
-    import socket
     import psutil
+    import socket
     
-    # Собираем сетевые интерфейсы (только активные и полезные)
-    interfaces = {}
-    for iface, addrs in psutil.net_if_addrs().items():
-        for addr in addrs:
-            if addr.family == socket.AF_INET: # Только IPv4
-                interfaces[iface] = addr.address
-
+    dc = client()
+    info = dc.info()
+    
     return {
-        "hostname": socket.gethostname(),
-        "fqdn": socket.getfqdn(),
-        "internal_ip": socket.gethostbyname(socket.gethostname()),
-        "network_interfaces": interfaces,
-        "os_info": os.environ.get("PRETTY_NAME", "Linux (Docker Container)"),
-        "mcp_server_host_env": SERVER_HOST,  # Твоя переменная из ENV
-        "is_docker": os.path.exists("/.dockerenv"),
-        "mount_points": [m.mountpoint for m in psutil.disk_partitions() if 'docker' not in m.mountpoint]
+        "host_name": info.get("Name"),          # Реальное имя сервера (хоста)
+        "os_type": info.get("OperatingSystem"), # ОС хоста (напр. Ubuntu 22.04)
+        "kernel_version": info.get("KernelVersion"),
+        "total_cpu_cores": info.get("NCPU"),
+        "total_memory_gb": round(info.get("MemTotal", 0) / (1024**3), 2),
+        "docker_root_dir": info.get("DockerRootDir"),
+        "architecture": info.get("Architecture"),
+        # Данные из контейнера для сравнения
+        "container_hostname": socket.gethostname(),
+        "is_read_only_fs": not os.access('/app', os.W_OK)
     }
+
 
 
 # ===========================================================================
