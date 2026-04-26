@@ -845,5 +845,6 @@ def remove_volume(volume_name: str, force: bool = False) -> dict:
 # ===========================================================================
 # ASGI app
 # ===========================================================================
+app = mcp.app
 _base_app = mcp.streamable_http_app()
 app = BearerAuthMiddleware(_base_app)
