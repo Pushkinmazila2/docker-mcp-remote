@@ -14,7 +14,8 @@ services:
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - SERVER_HOST=${SERVER_HOST}
       - SERVER_PORT=${SERVER_HOST:-8000}
-      - EXEC_WHITELIST=ls,ps,df,top,cat
+      - SAFE_MOUNT_DIR==${SAFE_MOUNT_DIR:-"/app/data"}
+      - EXEC_WHITELIST=cd,ls,ps,df,du,top,free,uptime,tail,cat,grep,node
 
     privileged: false
     security_opt:
