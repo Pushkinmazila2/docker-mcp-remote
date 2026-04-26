@@ -1,6 +1,6 @@
 services:
   mcp-docker-manager:
-    image: ghcr.io/pushkinmazila2/docker-mcp-remout:latest
+    image: ghcr.io/pushkinmazila2/docker-mcp-remote:latest
     container_name: mcp-docker-manager
     restart: unless-stopped
     
