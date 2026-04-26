@@ -11,10 +11,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     
     environment:
-      - MCP_AUTH_TOKEN=my0token0forever
-      - SERVER_HOST=myserver
-      - SERVER_PORT=8000
-      - EXEC_WHITELIST=ls,ps,df,top,npm,python
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - SERVER_HOST=${SERVER_HOST}
+      - SERVER_PORT=${SERVER_HOST:-8000}
+      - EXEC_WHITELIST=ls,ps,df,top,cat
+
+    privileged: false
+    security_opt:
+      - no-new-privileges:true
     
     deploy:
       resources:
