@@ -29,6 +29,13 @@ SAFE_MOUNT_PATHS = [
     for p in _safe_paths_raw.split(",") if p.strip()
 ]
 
+SERVER_NAME = os.environ.get("SERVER_NAME", "default")
+def prefixed_tool(name: str | None = None, **kwargs):
+    def decorator(func):
+        tool_base_name = name or func.__name__
+        full_name = f"{SERVER_NAME}_{tool_base_name}"
+        return mcp.tool(name=full_name, **kwargs)(func)
+    return decorator
 
 # ---------------------------------------------------------------------------
 # Auth middleware
