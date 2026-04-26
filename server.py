@@ -9,20 +9,25 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
 
-AUTH_TOKEN = os.environ.get("MCP_AUTH_TOKEN", "")
+
 SERVER_HOST = os.environ.get("SERVER_HOST", "your-server")
 SERVER_PORT = os.environ.get("SERVER_PORT", "8000")
-SAFE_MOUNT_DIR = os.environ.get("SAFE_MOUNT_DIR", "/app/data")
 
+AUTH_TOKEN = os.environ.get("MCP_AUTH_TOKEN", "")
 if not AUTH_TOKEN:
     AUTH_TOKEN = secrets.token_urlsafe(32)
-
 
 _whitelist_env = os.environ.get("EXEC_WHITELIST", "")
 EXEC_WHITELIST: list[str] | None = (
     [c.strip() for c in _whitelist_env.split(",") if c.strip()]
     if _whitelist_env else None  
 )
+
+_safe_paths_raw = os.environ.get("SAFE_MOUNT_DIR", "/app/data,/var/log/app")
+SAFE_MOUNT_PATHS = [
+    os.path.realpath(p.strip()) 
+    for p in _safe_paths_raw.split(",") if p.strip()
+]
 
 
 # ---------------------------------------------------------------------------
@@ -260,11 +265,20 @@ def validate_volumes(volumes: dict | None) -> dict | None:
         return None
     
     for host_path in volumes.keys():
-        if host_path.startswith("/"):
+        if host_path.strip() in ("/", ".", "./", ".."):
+            raise ValueError("Mounting '/' or '.' is strictly forbidden for security reasons.")
+            
+        if host_path.startswith("/") or host_path.startswith("."):
             real_path = os.path.realpath(host_path)
-            if not real_path.startswith(SAFE_MOUNT_DIR):
-                raise ValueError(f"Access denied to path: {host_path}. Only {SAFE_MOUNT_DIR} is allowed.")
+            is_safe = any(real_path.startswith(safe_path) for safe_path in SAFE_MOUNT_PATHS)
+            
+            if not is_safe:
+                allowed_str = ", ".join(SAFE_MOUNT_PATHS)
+                raise ValueError(
+                    f"Access denied to '{host_path}'. Mounting is only allowed from: {allowed_str}"
+                )
     return volumes
+
 
 # ===========================================================================
 # TOOLS - Containers
@@ -333,8 +347,6 @@ def create_container(
     detach: bool = True,
 ) -> dict:
     """
-    Create a container without starting it.
-
     Args:
         image: Docker image name (e.g. nginx:latest)
         name: Optional container name
@@ -345,21 +357,25 @@ def create_container(
         network: Network name to attach
         restart_policy: One of: no, always, on-failure, unless-stopped
         detach: Run in background (default True)
+    SECURITY: Only volumes from allowed paths are permitted.
     """
-    kwargs["volumes"] = validate_volumes(volumes)
+    create_container.__doc__ = f"Create a container. Allowed mount paths: {', '.join(SAFE_MOUNT_PATHS)}"
+    
+
+    safe_volumes = validate_volumes(volumes)
+    
     kwargs: dict = {"image": image, "detach": detach}
     if name:        kwargs["name"] = name
     if command:     kwargs["command"] = command
     if ports:       kwargs["ports"] = ports
     if environment: kwargs["environment"] = environment
-    if volumes:     kwargs["volumes"] = volumes
+    if safe_volumes: kwargs["volumes"] = safe_volumes
     if network:     kwargs["network"] = network
     if restart_policy:
         kwargs["restart_policy"] = {"Name": restart_policy}
 
     c = client().containers.create(**kwargs)
     return {"id": c.short_id, "name": c.name, "status": c.status}
-
 
 @mcp.tool()
 def run_container(
@@ -374,8 +390,7 @@ def run_container(
     remove: bool = False,
 ) -> dict:
     """
-    Create and start a container (docker run).
-
+    Create and start a container.
     Args:
         image: Docker image name
         name: Optional container name
@@ -386,14 +401,18 @@ def run_container(
         network: Network name
         restart_policy: no / always / on-failure / unless-stopped
         remove: Auto-remove container when it exits
+    SECURITY: Only volumes from allowed paths are permitted.
     """
-    kwargs["volumes"] = validate_volumes(volumes)
+    run_container.__doc__ = f"Run a container. Allowed mount paths: {', '.join(SAFE_MOUNT_PATHS)}"
+
+    safe_volumes = validate_volumes(volumes)
+    
     kwargs: dict = {"image": image, "detach": True, "remove": remove}
     if name:        kwargs["name"] = name
     if command:     kwargs["command"] = command
     if ports:       kwargs["ports"] = ports
     if environment: kwargs["environment"] = environment
-    if volumes:     kwargs["volumes"] = volumes
+    if safe_volumes: kwargs["volumes"] = safe_volumes
     if network:     kwargs["network"] = network
     if restart_policy:
         kwargs["restart_policy"] = {"Name": restart_policy}
@@ -846,5 +865,4 @@ def remove_volume(volume_name: str, force: bool = False) -> dict:
 # ASGI app
 # ===========================================================================
 app = mcp.app
-_base_app = mcp.streamable_http_app()
-app = BearerAuthMiddleware(_base_app)
+app.add_middleware(BearerAuthMiddleware)
