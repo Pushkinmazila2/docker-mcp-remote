@@ -23,6 +23,19 @@ SENSITIVE_PATTERNS = [
     
     # Переменные окружения с чувствительными данными
     (r'(?i)(SECRET|PASSWORD|TOKEN|KEY|CREDENTIALS)=([^\s]+)', r'\1=***REDACTED***'),
+    
+    #Django / Flask Secret Key
+    (r'(?i)SECRET_KEY["\s:=]+([^\s,\]}"\']+)', 'SECRET_KEY: ***REDACTED***'),
+
+    #GITHUB
+    (r'gh[pous]_[a-zA-Z0-9]{36}', '***GITHUB_TOKEN_REDACTED***'),
+
+    #AI_TOKENS
+    (r'sk-[pous]_[a-zA-Z0-9]{36}', '***AI_TOKEN_REDACTED***'),
+
+    #Connection Strings
+    (r'(mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis|amqp(?:s)?)://([^@\s!]+):([^@\s!]+)@', r'\1://***USER***:***PASS***@')
+
 ]
 
 def mask_sensitive_data(text: str) -> str:
@@ -101,4 +114,3 @@ def sanitize_response(data: Union[Dict, List, str, Any]) -> Union[Dict, List, st
         return mask_sensitive_data(data)
     else:
         return data
-</contents>
