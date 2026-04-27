@@ -101,4 +101,3 @@ def update_role(username: str, allowed_tools: Optional[List[str]] = None, descri
     _save_roles(roles)
     
     return role
-</contents>
