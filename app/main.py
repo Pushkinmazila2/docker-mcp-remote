@@ -71,8 +71,17 @@ async def handle_mcp(request: Request, auth_level: AuthLevel, token: Optional[st
 
         try:
             result = execute_tool(tool_name, tool_args)
+            safe_result = sanitize_response(result)
+            if str(result) != str(safe_result):
+                logger.warning(
+                    f"[SECURITY] Sensitive data redacted in tool '{tool_name}'"
+                )
+            if isinstance(safe_result, (dict, list)):
+                text_result = json.dumps(safe_result, indent=2, ensure_ascii=False)
+            else:
+                text_result = str(safe_result)
             return JSONResponse(mcp_result(req_id, {
-                "content": [{"type": "text", "text": str(result)}],
+                "content": [{"type": "text", "text": text_result}],
                 "isError": False,
             }))
         except ValueError as e:
