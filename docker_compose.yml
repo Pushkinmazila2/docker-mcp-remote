@@ -1,0 +1,23 @@
+services:
+  mcp-hub:
+    build: .
+    image: docker-mcp-hub:latest
+    container_name: docker-mcp-hub
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data        # servers.json
+      - ./keys:/keys        # SSH ключи
+    environment:
+      # !! Обязательно смените токены перед деплоем !!
+      MCP_USER_TOKEN: "user-read-only-token"
+      MCP_ADMIN_TOKEN: "admin-full-access-token"
+      WEB_UI_TOKEN: "webui-token"
+      DATA_DIR: /data
+      KEYS_DIR: /keys
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -1,12 +1,20 @@
-FROM python:3.12-alpine
+FROM python:3.12-slim
 
-WORKDIR /app
+# openssh-client нужен для ssh-keygen
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssh-client \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apk add --no-cache curl libstdc++ \
-    && apk add --no-cache --virtual .build-deps gcc musl-dev linux-headers \
-    && pip install --no-cache-dir mcp[cli] docker uvicorn starlette psutil \
-    && apk del .build-deps \
-    && rm -rf /root/.cache
+WORKDIR /srv
 
-COPY server.py .
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app/ ./app/
+
+# Дефолтные volume-точки
+VOLUME ["/data", "/keys"]
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
