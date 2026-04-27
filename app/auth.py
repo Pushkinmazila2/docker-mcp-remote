@@ -13,6 +13,8 @@ TOOLS_BY_LEVEL: dict[AuthLevel, list[str]] = {
     AuthLevel.USER: [
         "list_servers",
         "list_containers",
+        "view_logs",
+        "read_file",
     ],
     AuthLevel.ADMIN: [
         "list_servers",
@@ -20,6 +22,9 @@ TOOLS_BY_LEVEL: dict[AuthLevel, list[str]] = {
         "start_container",
         "stop_container",
         "add_server",
+        "view_logs",
+        "read_file",
+        "exec_command",
     ],
 }
 

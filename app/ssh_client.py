@@ -83,3 +83,46 @@ def docker_stop_container(server: ServerConfig, container: str) -> str:
     if code != 0:
         raise RuntimeError(f"docker stop failed: {err}")
     return out
+
+
+def docker_logs(server: ServerConfig, container: str, tail: int = 100, follow: bool = False) -> str:
+    """Получает логи контейнера"""
+    tail_flag = f"--tail {tail}" if tail > 0 else ""
+    follow_flag = "-f" if follow else ""
+    cmd = f"docker logs {tail_flag} {follow_flag} {container}"
+    
+    with ssh_connect(server) as client:
+        out, err, code = _exec(client, cmd)
+    
+    if code != 0:
+        raise RuntimeError(f"docker logs failed: {err}")
+    
+    # Логи могут быть в stderr (это нормально для docker logs)
+    return out + err
+
+
+def docker_exec_read_file(server: ServerConfig, container: str, file_path: str, max_lines: int = 1000) -> str:
+    """Читает содержимое файла из контейнера"""
+    # Используем head для ограничения количества строк
+    cmd = f"docker exec {container} head -n {max_lines} {file_path}"
+    
+    with ssh_connect(server) as client:
+        out, err, code = _exec(client, cmd)
+    
+    if code != 0:
+        raise RuntimeError(f"Failed to read file: {err}")
+    
+    return out
+
+
+def docker_exec_command(server: ServerConfig, container: str, command: str) -> str:
+    """Выполняет произвольную команду в контейнере"""
+    cmd = f"docker exec {container} {command}"
+    
+    with ssh_connect(server) as client:
+        out, err, code = _exec(client, cmd)
+    
+    if code != 0:
+        raise RuntimeError(f"Command failed: {err}")
+    
+    return out

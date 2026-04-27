@@ -9,6 +9,7 @@ from .auth import get_auth_level, get_allowed_tools, check_tool_access, verify_w
 from .docker_tools import TOOL_SCHEMAS, execute_tool
 from .models import MCPRequest, MCPResponse, AuthLevel, AddServerRequest
 from . import server_manager
+from .security import sanitize_response
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -108,14 +109,16 @@ async def mcp_admin(request: Request, authorization: Optional[str] = Header(None
 async def api_list_servers(authorization: Optional[str] = Header(None)):
     verify_web_token(authorization)
     servers = server_manager.list_servers()
-    return [s.model_dump(exclude={"password"}) for s in servers]
+    result = [s.model_dump(exclude={"password"}) for s in servers]
+    return sanitize_response(result)
 
 
 @app.post("/api/servers")
 async def api_add_server(req: AddServerRequest, authorization: Optional[str] = Header(None)):
     verify_web_token(authorization)
     cfg = server_manager.add_server(req)
-    return cfg.model_dump(exclude={"password"})
+    result = cfg.model_dump(exclude={"password"})
+    return sanitize_response(result)
 
 
 @app.delete("/api/servers/{server_id}")

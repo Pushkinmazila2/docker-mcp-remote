@@ -4,6 +4,7 @@
 """
 from .models import AddServerRequest, ServerAuthType
 from . import server_manager, ssh_client
+from .security import sanitize_response
 
 # ── Tool schemas (MCP format) ────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ TOOL_SCHEMAS = {
             "required": ["server_id", "container"],
         },
     },
-    "stop_container": {
+        "stop_container": {
         "name": "stop_container",
         "description": "Stop a running Docker container on a remote host",
         "inputSchema": {
@@ -79,6 +80,46 @@ TOOL_SCHEMAS = {
             "required": ["name", "host", "username", "auth_type"],
         },
     },
+    "view_logs": {
+        "name": "view_logs",
+        "description": "View logs from a Docker container",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "server_id": {"type": "string", "description": "Server ID"},
+                "container": {"type": "string", "description": "Container name or ID"},
+                "tail": {"type": "integer", "description": "Number of lines to show (default: 100)", "default": 100},
+            },
+            "required": ["server_id", "container"],
+        },
+    },
+    "read_file": {
+        "name": "read_file",
+        "description": "Read a file from inside a Docker container",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "server_id": {"type": "string", "description": "Server ID"},
+                "container": {"type": "string", "description": "Container name or ID"},
+                "file_path": {"type": "string", "description": "Path to file inside container"},
+                "max_lines": {"type": "integer", "description": "Max lines to read (default: 1000)", "default": 1000},
+            },
+            "required": ["server_id", "container", "file_path"],
+        },
+    },
+    "exec_command": {
+        "name": "exec_command",
+        "description": "Execute a command inside a Docker container",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "server_id": {"type": "string", "description": "Server ID"},
+                "container": {"type": "string", "description": "Container name or ID"},
+                "command": {"type": "string", "description": "Command to execute"},
+            },
+            "required": ["server_id", "container", "command"],
+        },
+    },
 }
 
 
@@ -86,7 +127,7 @@ TOOL_SCHEMAS = {
 
 def handle_list_servers(_args: dict) -> dict:
     servers = server_manager.list_servers()
-    return {
+    return sanitize_response({
         "servers": [
             {
                 "id": s.id,
@@ -100,7 +141,7 @@ def handle_list_servers(_args: dict) -> dict:
             }
             for s in servers
         ]
-    }
+    })
 
 
 def handle_list_containers(args: dict) -> dict:
@@ -112,22 +153,22 @@ def handle_list_containers(args: dict) -> dict:
         raise ValueError(f"Server '{server_id}' not found")
 
     containers = ssh_client.docker_list_containers(server, all_containers=include_all)
-    return {
+    return sanitize_response({
         "server": server.name,
         "containers": [c.model_dump() for c in containers],
-    }
+    })
 
 
 def handle_start_container(args: dict) -> dict:
     server = _get_server(args["server_id"])
     result = ssh_client.docker_start_container(server, args["container"])
-    return {"message": f"Started: {result}"}
+    return sanitize_response({"message": f"Started: {result}"})
 
 
 def handle_stop_container(args: dict) -> dict:
     server = _get_server(args["server_id"])
     result = ssh_client.docker_stop_container(server, args["container"])
-    return {"message": f"Stopped: {result}"}
+    return sanitize_response({"message": f"Stopped: {result}"})
 
 
 def handle_add_server(args: dict) -> dict:
@@ -154,7 +195,43 @@ def handle_add_server(args: dict) -> dict:
             "Check server description for the public key — add it to ~/.ssh/authorized_keys on the host."
         )
         response["description"] = cfg.description
-    return response
+    return sanitize_response(response)
+
+
+def handle_view_logs(args: dict) -> dict:
+    server = _get_server(args["server_id"])
+    tail = args.get("tail", 100)
+    logs = ssh_client.docker_logs(server, args["container"], tail=tail)
+    return sanitize_response({
+        "server": server.name,
+        "container": args["container"],
+        "logs": logs,
+    })
+
+
+def handle_read_file(args: dict) -> dict:
+    server = _get_server(args["server_id"])
+    max_lines = args.get("max_lines", 1000)
+    content = ssh_client.docker_exec_read_file(
+        server, args["container"], args["file_path"], max_lines=max_lines
+    )
+    return sanitize_response({
+        "server": server.name,
+        "container": args["container"],
+        "file_path": args["file_path"],
+        "content": content,
+    })
+
+
+def handle_exec_command(args: dict) -> dict:
+    server = _get_server(args["server_id"])
+    output = ssh_client.docker_exec_command(server, args["container"], args["command"])
+    return sanitize_response({
+        "server": server.name,
+        "container": args["container"],
+        "command": args["command"],
+        "output": output,
+    })
 
 
 # ── Dispatch table ───────────────────────────────────────────────────────────
@@ -165,6 +242,9 @@ HANDLERS = {
     "start_container": handle_start_container,
     "stop_container":  handle_stop_container,
     "add_server":      handle_add_server,
+    "view_logs":       handle_view_logs,
+    "read_file":       handle_read_file,
+    "exec_command":    handle_exec_command,
 }
 
 
