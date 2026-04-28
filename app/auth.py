@@ -5,19 +5,36 @@ from fastapi import HTTPException, Header
 from typing import Optional, List
 from .models import AuthLevel
 from . import role_manager
+from .vault_providers import get_vault_provider
 
 logger = logging.getLogger(__name__)
 
-# Токены задаются через переменные окружения
-USER_TOKEN = os.getenv("MCP_USER_TOKEN", "")
-if not USER_TOKEN:
-    USER_TOKEN = secrets.token_urlsafe(32)
-ADMIN_TOKEN = os.getenv("MCP_ADMIN_TOKEN", "")
-if not ADMIN_TOKEN:
-    ADMIN_TOKEN = secrets.token_urlsafe(32)
-WEB_UI_TOKEN = os.getenv("WEB_UI_TOKEN", "")
-if not WEB_UI_TOKEN:
-    WEB_UI_TOKEN = secrets.token_urlsafe(32)
+# Получаем провайдер Vault
+vault_provider = get_vault_provider()
+
+def _get_or_create_token(key: str, env_var: str) -> str:
+    """Получает токен из Vault или создает новый"""
+    # Сначала проверяем переменную окружения
+    token = os.getenv(env_var, "")
+    if token:
+        # Сохраняем в Vault для следующих запусков
+        vault_provider.set_token(key, token)
+        return token
+    
+    # Пробуем получить из Vault
+    token = vault_provider.get_token(key)
+    if token:
+        return token
+    
+    # Генерируем новый токен
+    token = secrets.token_urlsafe(32)
+    vault_provider.set_token(key, token)
+    return token
+
+# Токены загружаются из Vault или генерируются
+USER_TOKEN = _get_or_create_token("user_token", "MCP_USER_TOKEN")
+ADMIN_TOKEN = _get_or_create_token("admin_token", "MCP_ADMIN_TOKEN")
+WEB_UI_TOKEN = _get_or_create_token("webui_token", "WEB_UI_TOKEN")
 
 
 # ---------------------------------------------------------------------------

@@ -38,15 +38,17 @@ services:
       - ./data:/data        # servers.json (fallback)
       - ./keys:/keys        # SSH ключи
     environment:
-      # !! Обязательно смените токены перед деплоем !!
-      MCP_USER_TOKEN: "user-read-only-token"
-      MCP_ADMIN_TOKEN: "admin-full-access-token"
-      WEB_UI_TOKEN: "webui-token"
-      DATA_DIR: /data
+            DATA_DIR: /data
       KEYS_DIR: /keys
       
       # Vault Configuration - HashiCorp Vault by default
-      VAULT_TYPE: "hashicorp"
+      # Токены будут автоматически сгенерированы и сохранены в Vault
+      # Можно задать через переменные окружения для первого запуска:
+      # MCP_USER_TOKEN: "your-custom-user-token"
+      # MCP_ADMIN_TOKEN: "your-custom-admin-token"
+      # WEB_UI_TOKEN: "your-custom-webui-token"
+      
+      VAULT_TYPE: "hashicorp"  # Используется по умолчанию
       VAULT_ADDR: "http://vault:8200"
       VAULT_TOKEN: "root-token-change-me"  # !! Change in production !!
       VAULT_SECRET_PATH: "secret/data/docker-mcp-hub"

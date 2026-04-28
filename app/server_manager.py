@@ -2,11 +2,15 @@ import json
 import os
 import uuid
 import subprocess
+import logging
 from pathlib import Path
 from typing import Optional
 
 from .models import ServerConfig, AddServerRequest, ServerAuthType
 from . import crypto
+from .vault_providers import get_vault_provider
+
+logger = logging.getLogger(__name__)
 
 DATA_FILE = Path(os.getenv("DATA_DIR", "/data")) / "servers.json"
 KEYS_DIR = Path(os.getenv("KEYS_DIR", "/keys"))
@@ -80,20 +84,28 @@ def add_server(req: AddServerRequest, bearer_token: Optional[str] = None) -> Ser
         if result.returncode != 0:
             raise RuntimeError(f"ssh-keygen failed: {result.stderr}")
 
-        # Читаем приватный и публичный ключи
+                # Читаем приватный и публичный ключи
         private_key_content = private_key_path.read_text()
         pub_key_path = Path(str(private_key_path) + ".pub")
         pub_key = pub_key_path.read_text().strip()
         
-        # Шифруем приватный ключ
-        if bearer_token:
-            encrypted_private_key = crypto.encrypt_with_bearer(private_key_content, bearer_token)
+        # Сохраняем ключ в Vault
+        vault_provider = get_vault_provider()
+        if vault_provider.set_ssh_key(key_name, private_key_content, pub_key):
+            logger.info(f"SSH key {key_name} saved to Vault")
+            # Удаляем локальные файлы после сохранения в Vault
+            private_key_path.unlink()
+            pub_key_path.unlink()
         else:
-            encrypted_private_key = crypto.encrypt_with_master_key(private_key_content)
-        
-        # Перезаписываем файл зашифрованным содержимым
-        private_key_path.write_text(encrypted_private_key)
-        os.chmod(private_key_path, 0o600)
+            # Fallback: шифруем и сохраняем локально
+            logger.warning(f"Failed to save SSH key to Vault, using local storage")
+            if bearer_token:
+                encrypted_private_key = crypto.encrypt_with_bearer(private_key_content, bearer_token)
+            else:
+                encrypted_private_key = crypto.encrypt_with_master_key(private_key_content)
+            
+            private_key_path.write_text(encrypted_private_key)
+            os.chmod(private_key_path, 0o600)
 
                 # Подключаемся по паролю и устанавливаем ключ
         try:
@@ -152,11 +164,30 @@ def add_server(req: AddServerRequest, bearer_token: Optional[str] = None) -> Ser
         if result.returncode != 0:
             raise RuntimeError(f"ssh-keygen failed: {result.stderr}")
 
-        os.chmod(private_key_path, 0o600)
-
-        # Возвращаем публичный ключ в описании
+                # Читаем ключи
+        private_key_content = private_key_path.read_text()
         pub_key_path = Path(str(private_key_path) + ".pub")
         pub_key = pub_key_path.read_text().strip()
+        
+        # Сохраняем ключ в Vault
+        vault_provider = get_vault_provider()
+        if vault_provider.set_ssh_key(key_name, private_key_content, pub_key):
+            logger.info(f"SSH key {key_name} saved to Vault")
+            # Удаляем локальные файлы после сохранения в Vault
+            private_key_path.unlink()
+            pub_key_path.unlink()
+        else:
+            # Fallback: шифруем и сохраняем локально
+            logger.warning(f"Failed to save SSH key to Vault, using local storage")
+            if bearer_token:
+                encrypted_private_key = crypto.encrypt_with_bearer(private_key_content, bearer_token)
+            else:
+                encrypted_private_key = crypto.encrypt_with_master_key(private_key_content)
+            
+            private_key_path.write_text(encrypted_private_key)
+            os.chmod(private_key_path, 0o600)
+        
+        # Возвращаем публичный ключ в описании
         description = (req.description or "") + f"\n[PUBLIC KEY - add to authorized_keys on host]:\n{pub_key}"
         final_key_path = str(private_key_path)
 
@@ -192,11 +223,20 @@ def remove_server(server_id: str) -> bool:
     if server_id not in servers:
         return False
     cfg = servers.pop(server_id)
-    # Удаляем сгенерированные ключи если были
+    
+    # Удаляем сгенерированные ключи
     if cfg.generated_key_name:
+        vault_provider = get_vault_provider()
+        
+        # Удаляем из Vault
+        if vault_provider.delete_ssh_key(cfg.generated_key_name):
+            logger.info(f"SSH key {cfg.generated_key_name} deleted from Vault")
+        
+        # Удаляем локальные файлы если есть
         for suffix in ("", ".pub"):
             p = KEYS_DIR / (cfg.generated_key_name + suffix)
             if p.exists():
                 p.unlink()
+    
     _save(servers)
     return True

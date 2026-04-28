@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .models import ServerConfig, ServerAuthType, ContainerInfo
 from . import crypto
+from .vault_providers import get_vault_provider
 
 
 @contextmanager
@@ -27,30 +28,40 @@ def ssh_connect(server: ServerConfig, bearer_token: str = None) -> Generator[par
         if server.auth_type == ServerAuthType.PASSWORD:
             connect_kwargs["password"] = server.password
         elif server.auth_type in (ServerAuthType.KEY_PATH, ServerAuthType.GENERATE_KEY):
-            # Читаем зашифрованный ключ
-            key_path = Path(server.key_path)
-            if key_path.exists():
-                encrypted_key = key_path.read_text()
+            # Получаем провайдер Vault
+                vault_provider = get_vault_provider()
                 
-                # Расшифровываем ключ
-                try:
-                    if bearer_token:
-                        decrypted_key = crypto.decrypt_with_bearer(encrypted_key, bearer_token)
-                    else:
-                        decrypted_key = crypto.decrypt_with_master_key(encrypted_key)
-                except:
-                    # Если не удалось расшифровать, возможно ключ не зашифрован (обратная совместимость)
-                    decrypted_key = encrypted_key
+                # Извлекаем имя ключа из пути
+                key_name = Path(server.key_path).name
                 
-                # Создаем временный файл с расшифрованным ключом
-                temp_key_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.key')
-                temp_key_file.write(decrypted_key)
-                temp_key_file.close()
-                os.chmod(temp_key_file.name, 0o600)
-                
-                connect_kwargs["key_filename"] = temp_key_file.name
-            else:
-                connect_kwargs["key_filename"] = server.key_path
+                # Пробуем получить ключ из Vault
+                decrypted_key = vault_provider.get_ssh_key(key_name)
+            
+        if not decrypted_key:
+                # Fallback: читаем из локального файла
+                key_path = Path(server.key_path)
+                if key_path.exists():
+                    encrypted_key = key_path.read_text()
+                    
+                    # Расшифровываем ключ
+                    try:
+                        if bearer_token:
+                            decrypted_key = crypto.decrypt_with_bearer(encrypted_key, bearer_token)
+                        else:
+                            decrypted_key = crypto.decrypt_with_master_key(encrypted_key)
+                    except:
+                        # Если не удалось расшифровать, возможно ключ не зашифрован
+                        decrypted_key = encrypted_key
+                else:
+                    raise FileNotFoundError(f"SSH key not found: {key_name}")
+            
+            # Создаем временный файл с расшифрованным ключом
+        temp_key_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.key')
+        temp_key_file.write(decrypted_key)
+        temp_key_file.close()
+        os.chmod(temp_key_file.name, 0o600)
+            
+        connect_kwargs["key_filename"] = temp_key_file.name
 
         client.connect(**connect_kwargs)
         yield client
