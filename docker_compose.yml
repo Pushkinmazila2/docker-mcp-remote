@@ -9,13 +9,30 @@ services:
     volumes:
       - ./data:/data        # servers.json
       - ./keys:/keys        # SSH ключи
-    environment:
+        environment:
       # !! Обязательно смените токены перед деплоем !!
       MCP_USER_TOKEN: "user-read-only-token"
       MCP_ADMIN_TOKEN: "admin-full-access-token"
       WEB_UI_TOKEN: "webui-token"
       DATA_DIR: /data
       KEYS_DIR: /keys
+      
+      # Vault Configuration (choose one)
+      # Option 1: Local File Storage (default)
+      VAULT_TYPE: "local"
+      
+      # Option 2: HashiCorp Vault
+      # VAULT_TYPE: "hashicorp"
+      # VAULT_ADDR: "https://vault.example.com:8200"
+      # VAULT_TOKEN: "your-vault-token"
+      # VAULT_SECRET_PATH: "secret/data/docker-mcp-hub"
+      
+      # Option 3: AWS Secrets Manager
+      # VAULT_TYPE: "aws"
+      # AWS_SECRET_NAME: "docker-mcp-hub/master-keys"
+      # AWS_REGION: "us-east-1"
+      # AWS_ACCESS_KEY_ID: "your-access-key"
+      # AWS_SECRET_ACCESS_KEY: "your-secret-key"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

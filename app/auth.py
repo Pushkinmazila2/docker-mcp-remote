@@ -25,9 +25,22 @@ if not WEB_UI_TOKEN:
 # ---------------------------------------------------------------------------
 def print_startup_info():
     """Выводит информацию о токенах и ролях при старте"""
+    vault_type = os.getenv("VAULT_TYPE", "local")
+    
     print("\n" + "="*60)
     print("🚀 DOCKER MCP SERVER STARTED")
     print("="*60)
+    
+    # Показываем информацию о Vault
+    print(f"\n🔐 VAULT: {vault_type.upper()}")
+    if vault_type == "hashicorp":
+        print(f"   Address: {os.getenv('VAULT_ADDR', 'not set')}")
+    elif vault_type == "aws":
+        print(f"   Secret: {os.getenv('AWS_SECRET_NAME', 'not set')}")
+        print(f"   Region: {os.getenv('AWS_REGION', 'not set')}")
+    else:
+        print(f"   Location: /data/.master_key, /data/.salt")
+    
     print("\n📋 BUILT-IN TOKENS:")
     print(f"  🔑 USER_TOKEN:   {USER_TOKEN}")
     print(f"     Endpoint: /mcp/user")
@@ -51,12 +64,16 @@ def print_startup_info():
     else:
         print("\n🎭 CUSTOM ROLES: None (create via API)")
     
-    print("\n" + "="*60)
+        print("\n" + "="*60)
     print("⚠️  IMPORTANT: BACKUP YOUR ENCRYPTION KEYS!")
     print("="*60)
     print("All passwords and SSH keys are encrypted.")
     print("To backup: GET /api/crypto/backup-instructions")
-    print("Without backup, data loss on container recreation!")
+    print('curl -H "Authorization: Bearer YOUR_TOKEN" http://ip:port/api/crypto/backup-instructions | jq -r .instructions')
+    if vault_type == "local":
+        print("⚠️  Using local storage - backup /data directory!")
+    else:
+        print(f"✅ Using {vault_type.upper()} - keys stored externally")
     print("="*60 + "\n")
 
 # Вызываем при импорте модуля
@@ -70,6 +87,7 @@ TOOLS_BY_LEVEL: dict[AuthLevel, list[str]] = {
         "list_containers",
         "view_logs",
         "read_file",
+        "get_help",
     ],
     AuthLevel.ADMIN: [
         "list_servers",
@@ -80,6 +98,7 @@ TOOLS_BY_LEVEL: dict[AuthLevel, list[str]] = {
         "view_logs",
         "read_file",
         "exec_command",
+        "get_help",
     ],
 }
 

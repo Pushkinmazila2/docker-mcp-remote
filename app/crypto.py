@@ -1,44 +1,64 @@
 import os
 import base64
 import secrets
+import logging
 from pathlib import Path
 from typing import Optional
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.fernet import Fernet
+from .vault_providers import get_vault_provider
 
-# Путь к мастер-ключу
+logger = logging.getLogger(__name__)
+
+# Получаем провайдер хранилища
+vault_provider = get_vault_provider()
+
+# Пути к локальным файлам (для обратной совместимости)
 MASTER_KEY_FILE = Path(os.getenv("DATA_DIR", "/data")) / ".master_key"
 SALT_FILE = Path(os.getenv("DATA_DIR", "/data")) / ".salt"
+KEYS_DIR = Path(os.getenv("KEYS_DIR", "/keys"))
 
 def _ensure_master_key() -> bytes:
-    """Создает или загружает мастер-ключ"""
-    if MASTER_KEY_FILE.exists():
-        with open(MASTER_KEY_FILE, "rb") as f:
-            return f.read()
+    """Создает или загружает мастер-ключ из выбранного хранилища"""
+    # Пытаемся получить из vault
+    master_key = vault_provider.get_master_key()
+    
+    if master_key:
+        logger.info("✅ Master key loaded from vault")
+        return master_key
     
     # Генерируем новый мастер-ключ
+    logger.info("🔑 Generating new master key...")
     master_key = secrets.token_bytes(32)
-    MASTER_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(MASTER_KEY_FILE, "wb") as f:
-        f.write(master_key)
-    os.chmod(MASTER_KEY_FILE, 0o600)
+    
+    # Сохраняем в vault
+    if vault_provider.set_master_key(master_key):
+        logger.info("✅ Master key saved to vault")
+    else:
+        logger.error("❌ Failed to save master key to vault")
     
     return master_key
 
 def _ensure_salt() -> bytes:
-    """Создает или загружает соль для KDF"""
-    if SALT_FILE.exists():
-        with open(SALT_FILE, "rb") as f:
-            return f.read()
+    """Создает или загружает соль для KDF из выбранного хранилища"""
+    # Пытаемся получить из vault
+    salt = vault_provider.get_salt()
+    
+    if salt:
+        logger.info("✅ Salt loaded from vault")
+        return salt
     
     # Генерируем новую соль
+    logger.info("🧂 Generating new salt...")
     salt = secrets.token_bytes(32)
-    SALT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SALT_FILE, "wb") as f:
-        f.write(salt)
-    os.chmod(SALT_FILE, 0o600)
+    
+    # Сохраняем в vault
+    if vault_provider.set_salt(salt):
+        logger.info("✅ Salt saved to vault")
+    else:
+        logger.error("❌ Failed to save salt to vault")
     
     return salt
 

@@ -6,6 +6,7 @@ from typing import Optional
 from .models import AddServerRequest, ServerAuthType
 from . import server_manager, ssh_client
 from .security import sanitize_response
+from .help_content import get_help as get_help_content
 
 # ── Tool schemas (MCP format) ────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ TOOL_SCHEMAS = {
             "required": ["server_id", "container", "file_path"],
         },
     },
-    "exec_command": {
+        "exec_command": {
         "name": "exec_command",
         "description": "Execute a command inside a Docker container",
         "inputSchema": {
@@ -119,6 +120,21 @@ TOOL_SCHEMAS = {
                 "command": {"type": "string", "description": "Command to execute"},
             },
             "required": ["server_id", "container", "command"],
+        },
+    },
+    "get_help": {
+        "name": "get_help",
+        "description": "Get help and instructions for common tasks",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "description": "Help topic",
+                    "enum": ["backup", "create_user", "add_server", "external_vault", "overview"]
+                },
+            },
+            "required": ["topic"],
         },
     },
 }
@@ -242,6 +258,16 @@ def handle_exec_command(args: dict) -> dict:
     })
 
 
+def handle_get_help(args: dict) -> dict:
+    """Возвращает справочную информацию по запрошенной теме"""
+    topic = args.get("topic", "overview")
+    help_text = get_help_content(topic)
+    return {
+        "topic": topic,
+        "help": help_text
+    }
+
+
 # ── Dispatch table ───────────────────────────────────────────────────────────
 
 HANDLERS = {
@@ -253,6 +279,7 @@ HANDLERS = {
     "view_logs":       handle_view_logs,
     "read_file":       handle_read_file,
     "exec_command":    handle_exec_command,
+    "get_help":        handle_get_help,
 }
 
 
