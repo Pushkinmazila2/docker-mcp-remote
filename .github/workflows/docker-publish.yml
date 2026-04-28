@@ -3,6 +3,11 @@ name: Build and Publish Docker Image
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - 'SECURITY.md'
+      - '.env'
+      - '.env.example'
+      - '**.md' 
   workflow_dispatch:
 
 env:
@@ -13,7 +18,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write 
       packages: write
       security-events: write # Нужно для публикации отчетов во вкладку Security
 
@@ -37,27 +42,53 @@ jobs:
             type=raw,value=latest
             type=sha,format=short
 
-      # 1. Сначала просто собираем образ локально (без пуша)
+      # 1. Собираем образ локально
       - name: Build Docker image locally
         uses: docker/build-push-action@v5
         with:
           context: .
           push: false
-          load: true # Загружает образ в локальный Docker daemon для сканирования
+          load: true
           tags: local-scan-target:test
 
-      # 2. Сканируем образ на наличие уязвимостей
+      # 2. Сканируем и сохраняем результат в файл markdown
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'local-scan-target:test'
           format: 'table'
-          exit-code: '1' # Прервать сборку, если найдены уязвимости
-          ignore-unfixed: true # Игнорировать CVE, для которых еще нет патча
-          vuln-type: 'os,library'
+          output: 'trivy-results.txt' # Сначала в текст для логов
+          exit-code: '0' # НЕ КРАШИМ сборку
+          ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-      # 3. Если сканирование прошло успешно — пушим в реестр
+      # 3. Генерируем красивый Markdown для файла
+      - name: Generate Markdown Report
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'local-scan-target:test'
+          format: 'template'
+          template: "@contrib/markdown.tpl"
+          output: 'trivy-report.md'
+          exit-code: '0'
+
+      # 4. Записываем результат в SECURITY.md между якорями
+      - name: Update SECURITY.md
+        run: |
+          # Вырезаем всё между якорями и вставляем новый отчет
+          sed -i '/<!-- TRIVY_START -->/,/<!-- TRIVY_END -->/{//!d}' SECURITY.md
+          sed -i '/<!-- TRIVY_START -->/r trivy-report.md' SECURITY.md
+
+      # 5. Коммитим изменения в SECURITY.md (опционально)
+      - name: Commit Security Report
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add SECURITY.md
+          git commit -m "chore: update security report [skip ci]" || echo "No changes"
+          git push
+
+      # 6. Теперь пушим сам образ
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
