@@ -1,15 +1,18 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
-# openssh-client нужен для ssh-keygen, curl для проверки Vault
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     openssh-client \
     curl \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
 
 COPY app/ ./app/
 COPY entrypoint.sh /entrypoint.sh
