@@ -30,7 +30,7 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.13/site-packages/click-8.3.3.dist-info/METADATA            │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.13/site-packages/cryptography-47.0.0.dist-info/METADATA    │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.13/site-packages/cryptography-48.0.0.dist-info/METADATA    │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.13/site-packages/fastapi-0.136.1.dist-info/METADATA        │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
@@ -46,13 +46,13 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.13/site-packages/paramiko-4.0.0.dist-info/METADATA         │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.13/site-packages/pip-26.1.dist-info/METADATA               │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.13/site-packages/pip-26.1.1.dist-info/METADATA             │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.13/site-packages/pycparser-3.0.dist-info/METADATA          │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.13/site-packages/pydantic-2.13.3.dist-info/METADATA        │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.13/site-packages/pydantic-2.13.4.dist-info/METADATA        │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.13/site-packages/pydantic_core-2.46.3.dist-info/METADATA   │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.13/site-packages/pydantic_core-2.46.4.dist-info/METADATA   │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.13/site-packages/pynacl-1.6.2.dist-info/METADATA           │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
