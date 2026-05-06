@@ -3,6 +3,7 @@ import os
 import uuid
 import subprocess
 import logging
+import socket
 from pathlib import Path
 from typing import Optional
 
@@ -15,19 +16,45 @@ logger = logging.getLogger(__name__)
 DATA_FILE = Path(os.getenv("DATA_DIR", "/data")) / "servers.json"
 KEYS_DIR = Path(os.getenv("KEYS_DIR", "/keys"))
 
+# Получаем hostname контейнера для идентификации
+MCP_HUB_HOSTNAME = socket.gethostname()
+
 
 def _load() -> dict[str, ServerConfig]:
-    if not DATA_FILE.exists():
-        return {}
-    with open(DATA_FILE) as f:
-        raw = json.load(f)
-    return {k: ServerConfig(**v) for k, v in raw.items()}
+    """Загружает конфигурацию серверов из Vault или локального файла (fallback)"""
+    vault_provider = get_vault_provider()
+    
+    # Пробуем загрузить из Vault
+    vault_config = vault_provider.get_servers_config()
+    if vault_config:
+        logger.info("Loaded servers config from Vault")
+        return {k: ServerConfig(**v) for k, v in vault_config.items()}
+    
+    # Fallback: загружаем из локального файла
+    if DATA_FILE.exists():
+        logger.info("Loaded servers config from local file (fallback)")
+        with open(DATA_FILE) as f:
+            raw = json.load(f)
+        return {k: ServerConfig(**v) for k, v in raw.items()}
+    
+    return {}
 
 
 def _save(servers: dict[str, ServerConfig]) -> None:
+    """Сохраняет конфигурацию серверов в Vault и локальный файл (fallback)"""
+    vault_provider = get_vault_provider()
+    servers_dict = {k: v.model_dump() for k, v in servers.items()}
+    
+    # Сохраняем в Vault
+    if vault_provider.set_servers_config(servers_dict):
+        logger.info("Saved servers config to Vault")
+    else:
+        logger.warning("Failed to save servers config to Vault, using local file")
+    
+    # Также сохраняем локально как fallback
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(DATA_FILE, "w") as f:
-        json.dump({k: v.model_dump() for k, v in servers.items()}, f, indent=2)
+        json.dump(servers_dict, f, indent=2)
 
 
 def list_servers() -> list[ServerConfig]:
@@ -70,7 +97,7 @@ def add_server(req: AddServerRequest, bearer_token: Optional[str] = None) -> Ser
     final_key_path = None
     final_password = None
 
-    # Если используется пароль, генерируем ключи и устанавливаем их на хост
+        # Если используется пароль, генерируем ключи и устанавливаем их на хост
     if req.auth_type == ServerAuthType.PASSWORD:
         # Генерируем SSH ключ
         key_name = f"key_{server_id}"
@@ -78,34 +105,37 @@ def add_server(req: AddServerRequest, bearer_token: Optional[str] = None) -> Ser
         KEYS_DIR.mkdir(parents=True, exist_ok=True)
 
         result = subprocess.run(
-            ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", str(private_key_path)],
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", str(private_key_path), "-C", f"mcp_hub@{MCP_HUB_HOSTNAME}"],
             capture_output=True, text=True
         )
         if result.returncode != 0:
             raise RuntimeError(f"ssh-keygen failed: {result.stderr}")
 
-                # Читаем приватный и публичный ключи
+        # Читаем приватный и публичный ключи
         private_key_content = private_key_path.read_text()
         pub_key_path = Path(str(private_key_path) + ".pub")
         pub_key = pub_key_path.read_text().strip()
         
-        # Сохраняем ключ в Vault
+        # Сохраняем ключ в Vault (только в Vault, без локального хранения)
         vault_provider = get_vault_provider()
-        if vault_provider.set_ssh_key(key_name, private_key_content, pub_key):
-            logger.info(f"SSH key {key_name} saved to Vault")
-            # Удаляем локальные файлы после сохранения в Vault
-            private_key_path.unlink()
-            pub_key_path.unlink()
-        else:
-            # Fallback: шифруем и сохраняем локально
-            logger.warning(f"Failed to save SSH key to Vault, using local storage")
-            if bearer_token:
-                encrypted_private_key = crypto.encrypt_with_bearer(private_key_content, bearer_token)
-            else:
-                encrypted_private_key = crypto.encrypt_with_master_key(private_key_content)
-            
-            private_key_path.write_text(encrypted_private_key)
-            os.chmod(private_key_path, 0o600)
+        if not vault_provider.set_ssh_key(key_name, private_key_content, pub_key):
+            raise RuntimeError(f"Failed to save SSH key {key_name} to Vault")
+        
+        logger.info(f"SSH key {key_name} saved to Vault")
+        
+        # Сохраняем метаданные ключа
+        metadata = {
+            "server_id": server_id,
+            "server_name": req.name,
+            "server_host": req.host,
+            "created_at": str(uuid.uuid4()),  # timestamp placeholder
+            "mcp_hub_hostname": MCP_HUB_HOSTNAME
+        }
+        vault_provider.set_ssh_key_metadata(key_name, metadata)
+        
+        # Удаляем локальные файлы
+        private_key_path.unlink()
+        pub_key_path.unlink()
 
                 # Подключаемся по паролю и устанавливаем ключ
         try:
@@ -120,11 +150,13 @@ def add_server(req: AddServerRequest, bearer_token: Optional[str] = None) -> Ser
                 timeout=10
             )
             
-            # Создаем .ssh директорию и добавляем ключ
+                        # Создаем .ssh директорию и добавляем ключ с идентификацией mcp_hub
+            # Добавляем комментарий с hostname контейнера для идентификации
+            key_with_comment = f"{pub_key.rsplit(' ', 1)[0]} mcp_hub@{MCP_HUB_HOSTNAME}"
             commands = [
                 "mkdir -p ~/.ssh",
                 "chmod 700 ~/.ssh",
-                f"echo '{pub_key}' >> ~/.ssh/authorized_keys",
+                f"echo '{key_with_comment}' >> ~/.ssh/authorized_keys",
                 "chmod 600 ~/.ssh/authorized_keys"
             ]
             for cmd in commands:
@@ -151,45 +183,48 @@ def add_server(req: AddServerRequest, bearer_token: Optional[str] = None) -> Ser
     elif req.auth_type == ServerAuthType.KEY_PATH:
         final_key_path = req.key_path
     
-    elif req.auth_type == ServerAuthType.GENERATE_KEY:
+        elif req.auth_type == ServerAuthType.GENERATE_KEY:
         # Генерируем SSH ключ без установки
         key_name = f"key_{server_id}"
         private_key_path = KEYS_DIR / key_name
         KEYS_DIR.mkdir(parents=True, exist_ok=True)
 
         result = subprocess.run(
-            ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", str(private_key_path)],
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", str(private_key_path), "-C", f"mcp_hub@{MCP_HUB_HOSTNAME}"],
             capture_output=True, text=True
         )
         if result.returncode != 0:
             raise RuntimeError(f"ssh-keygen failed: {result.stderr}")
 
-                # Читаем ключи
+        # Читаем ключи
         private_key_content = private_key_path.read_text()
         pub_key_path = Path(str(private_key_path) + ".pub")
         pub_key = pub_key_path.read_text().strip()
         
-        # Сохраняем ключ в Vault
+        # Сохраняем ключ в Vault (только в Vault)
         vault_provider = get_vault_provider()
-        if vault_provider.set_ssh_key(key_name, private_key_content, pub_key):
-            logger.info(f"SSH key {key_name} saved to Vault")
-            # Удаляем локальные файлы после сохранения в Vault
-            private_key_path.unlink()
-            pub_key_path.unlink()
-        else:
-            # Fallback: шифруем и сохраняем локально
-            logger.warning(f"Failed to save SSH key to Vault, using local storage")
-            if bearer_token:
-                encrypted_private_key = crypto.encrypt_with_bearer(private_key_content, bearer_token)
-            else:
-                encrypted_private_key = crypto.encrypt_with_master_key(private_key_content)
-            
-            private_key_path.write_text(encrypted_private_key)
-            os.chmod(private_key_path, 0o600)
+        if not vault_provider.set_ssh_key(key_name, private_key_content, pub_key):
+            raise RuntimeError(f"Failed to save SSH key {key_name} to Vault")
         
-        # Возвращаем публичный ключ в описании
+        logger.info(f"SSH key {key_name} saved to Vault")
+        
+        # Сохраняем метаданные ключа
+        metadata = {
+            "server_id": server_id,
+            "server_name": req.name,
+            "server_host": req.host,
+            "created_at": str(uuid.uuid4()),
+            "mcp_hub_hostname": MCP_HUB_HOSTNAME
+        }
+        vault_provider.set_ssh_key_metadata(key_name, metadata)
+        
+        # Удаляем локальные файлы
+        private_key_path.unlink()
+        pub_key_path.unlink()
+        
+        # Возвращаем публичный ключ в описании с идентификацией mcp_hub
         description = (req.description or "") + f"\n[PUBLIC KEY - add to authorized_keys on host]:\n{pub_key}"
-        final_key_path = str(private_key_path)
+        final_key_path = key_name  # Теперь храним только имя ключа, не путь
 
         # Шифруем пароль если он есть и передан bearer токен
     encrypted_password = None
@@ -224,19 +259,14 @@ def remove_server(server_id: str) -> bool:
         return False
     cfg = servers.pop(server_id)
     
-    # Удаляем сгенерированные ключи
+    # Удаляем сгенерированные ключи из Vault
     if cfg.generated_key_name:
         vault_provider = get_vault_provider()
         
-        # Удаляем из Vault
         if vault_provider.delete_ssh_key(cfg.generated_key_name):
             logger.info(f"SSH key {cfg.generated_key_name} deleted from Vault")
-        
-        # Удаляем локальные файлы если есть
-        for suffix in ("", ".pub"):
-            p = KEYS_DIR / (cfg.generated_key_name + suffix)
-            if p.exists():
-                p.unlink()
+        else:
+            logger.warning(f"Failed to delete SSH key {cfg.generated_key_name} from Vault")
     
     _save(servers)
     return True

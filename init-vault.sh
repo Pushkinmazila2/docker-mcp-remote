@@ -65,6 +65,15 @@ path "secret/metadata/docker-mcp-hub/ssh-keys/*" {
 path "secret/metadata/docker-mcp-hub/ssh-keys" {
   capabilities = ["list"]
 }
+
+# Servers configuration storage
+path "secret/data/docker-mcp-hub/servers" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "secret/metadata/docker-mcp-hub/servers" {
+  capabilities = ["list", "read"]
+}
 EOF
 
 echo "🔑 Creating token for Docker MCP Hub..."

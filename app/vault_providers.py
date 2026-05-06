@@ -76,6 +76,31 @@ class VaultProvider(ABC):
         pass
     
     @abstractmethod
+    def get_ssh_key_metadata(self, key_name: str) -> Optional[dict]:
+        """Получить метаданные SSH ключа (server info, etc)"""
+        pass
+    
+    @abstractmethod
+    def set_ssh_key_metadata(self, key_name: str, metadata: dict) -> bool:
+        """Сохранить метаданные SSH ключа"""
+        pass
+    
+    @abstractmethod
+    def scan_ssh_keys_directory(self, directory: str) -> list[dict]:
+        """Сканировать директорию и импортировать SSH ключи с метаданными"""
+        pass
+    
+    @abstractmethod
+    def get_servers_config(self) -> Optional[dict]:
+        """Получить конфигурацию серверов из Vault"""
+        pass
+    
+    @abstractmethod
+    def set_servers_config(self, config: dict) -> bool:
+        """Сохранить конфигурацию серверов в Vault"""
+        pass
+    
+    @abstractmethod
     def is_available(self) -> bool:
         """Проверить доступность провайдера"""
         pass
@@ -154,63 +179,44 @@ class LocalFileVaultProvider(VaultProvider):
             return []
     
     def get_ssh_key(self, key_name: str) -> Optional[str]:
-        from pathlib import Path
-        keys_dir = Path(os.getenv("KEYS_DIR", "/keys"))
-        key_file = keys_dir / key_name
-        if key_file.exists():
-            return key_file.read_text()
+        # Local provider не должен использоваться для SSH ключей
+        logger.warning("LocalFileVaultProvider.get_ssh_key called - SSH keys should be in Vault only")
         return None
     
     def set_ssh_key(self, key_name: str, private_key: str, public_key: str = None) -> bool:
-        try:
-            from pathlib import Path
-            keys_dir = Path(os.getenv("KEYS_DIR", "/keys"))
-            keys_dir.mkdir(parents=True, exist_ok=True)
-            
-            key_file = keys_dir / key_name
-            key_file.write_text(private_key)
-            os.chmod(key_file, 0o600)
-            
-            if public_key:
-                pub_file = keys_dir / f"{key_name}.pub"
-                pub_file.write_text(public_key)
-                os.chmod(pub_file, 0o644)
-            
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save SSH key {key_name}: {e}")
-            return False
+        logger.warning("LocalFileVaultProvider.set_ssh_key called - SSH keys should be in Vault only")
+        return False
     
     def delete_ssh_key(self, key_name: str) -> bool:
-        try:
-            from pathlib import Path
-            keys_dir = Path(os.getenv("KEYS_DIR", "/keys"))
-            key_file = keys_dir / key_name
-            pub_file = keys_dir / f"{key_name}.pub"
-            
-            if key_file.exists():
-                key_file.unlink()
-            if pub_file.exists():
-                pub_file.unlink()
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete SSH key {key_name}: {e}")
-            return False
+        logger.warning("LocalFileVaultProvider.delete_ssh_key called - SSH keys should be in Vault only")
+        return False
     
     def list_ssh_keys(self) -> list[str]:
-        try:
-            from pathlib import Path
-            keys_dir = Path(os.getenv("KEYS_DIR", "/keys"))
-            if not keys_dir.exists():
-                return []
-            # Возвращаем только приватные ключи (без .pub)
-            return [f.name for f in keys_dir.iterdir() if f.is_file() and not f.name.endswith('.pub')]
-        except Exception as e:
-            logger.error(f"Failed to list SSH keys: {e}")
-            return []
+        logger.warning("LocalFileVaultProvider.list_ssh_keys called - SSH keys should be in Vault only")
+        return []
     
     def is_available(self) -> bool:
         return True
+    
+    def get_ssh_key_metadata(self, key_name: str) -> Optional[dict]:
+        logger.warning("LocalFileVaultProvider.get_ssh_key_metadata called - not supported")
+        return None
+    
+    def set_ssh_key_metadata(self, key_name: str, metadata: dict) -> bool:
+        logger.warning("LocalFileVaultProvider.set_ssh_key_metadata called - not supported")
+        return False
+    
+    def scan_ssh_keys_directory(self, directory: str) -> list[dict]:
+        logger.warning("LocalFileVaultProvider.scan_ssh_keys_directory called - not supported")
+        return []
+    
+    def get_servers_config(self) -> Optional[dict]:
+        logger.warning("LocalFileVaultProvider.get_servers_config called - not supported")
+        return None
+    
+    def set_servers_config(self, config: dict) -> bool:
+        logger.warning("LocalFileVaultProvider.set_servers_config called - not supported")
+        return False
 
 
 class HashiCorpVaultProvider(VaultProvider):
@@ -469,6 +475,131 @@ class HashiCorpVaultProvider(VaultProvider):
     
     def is_available(self) -> bool:
         return bool(self.vault_addr and self.vault_token)
+    
+    def get_ssh_key_metadata(self, key_name: str) -> Optional[dict]:
+        client = self._get_client()
+        if not client:
+            return None
+        
+        try:
+            response = client.secrets.kv.v2.read_secret_version(
+                path=f"{self.vault_path}/ssh-keys/{key_name}"
+            )
+            return response['data']['data'].get('metadata', {})
+        except Exception as e:
+            logger.debug(f"Metadata for SSH key {key_name} not found in Vault: {e}")
+            return None
+    
+    def set_ssh_key_metadata(self, key_name: str, metadata: dict) -> bool:
+        client = self._get_client()
+        if not client:
+            return False
+        
+        try:
+            # Получаем текущий ключ
+            response = client.secrets.kv.v2.read_secret_version(
+                path=f"{self.vault_path}/ssh-keys/{key_name}"
+            )
+            current_data = response['data']['data']
+            
+            # Добавляем метаданные
+            current_data['metadata'] = metadata
+            
+            client.secrets.kv.v2.create_or_update_secret(
+                path=f"{self.vault_path}/ssh-keys/{key_name}",
+                secret=current_data
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save metadata for SSH key {key_name}: {e}")
+            return False
+    
+    def scan_ssh_keys_directory(self, directory: str) -> list[dict]:
+        """Сканирует директорию и импортирует SSH ключи в Vault"""
+        from pathlib import Path
+        import json
+        
+        keys_dir = Path(directory)
+        if not keys_dir.exists():
+            logger.warning(f"SSH keys directory {directory} does not exist")
+            return []
+        
+        imported_keys = []
+        
+        # Ищем config.json с метаданными
+        config_file = keys_dir / "config.json"
+        metadata_map = {}
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    config_data = json.load(f)
+                    metadata_map = config_data.get('keys', {})
+                logger.info(f"Loaded metadata for {len(metadata_map)} keys from config.json")
+            except Exception as e:
+                logger.warning(f"Failed to load config.json: {e}")
+        
+        # Сканируем все приватные ключи
+        for key_file in keys_dir.iterdir():
+            if key_file.is_file() and not key_file.name.endswith('.pub') and key_file.name != 'config.json':
+                try:
+                    key_name = key_file.name
+                    private_key = key_file.read_text()
+                    
+                    # Ищем публичный ключ
+                    pub_file = keys_dir / f"{key_name}.pub"
+                    public_key = None
+                    if pub_file.exists():
+                        public_key = pub_file.read_text().strip()
+                    
+                    # Получаем метаданные из config.json
+                    metadata = metadata_map.get(key_name, {})
+                    
+                    # Сохраняем в Vault
+                    if self.set_ssh_key(key_name, private_key, public_key):
+                        if metadata:
+                            self.set_ssh_key_metadata(key_name, metadata)
+                        
+                        imported_keys.append({
+                            'key_name': key_name,
+                            'has_public_key': public_key is not None,
+                            'metadata': metadata
+                        })
+                        logger.info(f"Imported SSH key {key_name} to Vault")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to import SSH key {key_file.name}: {e}")
+        
+        return imported_keys
+    
+    def get_servers_config(self) -> Optional[dict]:
+        client = self._get_client()
+        if not client:
+            return None
+        
+        try:
+            response = client.secrets.kv.v2.read_secret_version(
+                path=f"{self.vault_path}/servers"
+            )
+            return response['data']['data']
+        except Exception as e:
+            logger.debug(f"Servers config not found in Vault: {e}")
+            return None
+    
+    def set_servers_config(self, config: dict) -> bool:
+        client = self._get_client()
+        if not client:
+            return False
+        
+        try:
+            client.secrets.kv.v2.create_or_update_secret(
+                path=f"{self.vault_path}/servers",
+                secret=config
+            )
+            logger.info("Servers config saved to Vault")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save servers config to Vault: {e}")
+            return False
 
 
 class AWSSecretsManagerProvider(VaultProvider):
@@ -760,6 +891,126 @@ class AWSSecretsManagerProvider(VaultProvider):
     def is_available(self) -> bool:
         # Проверяем наличие AWS credentials
         return bool(os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE"))
+    
+    def get_ssh_key_metadata(self, key_name: str) -> Optional[dict]:
+        client = self._get_client()
+        if not client:
+            return None
+        
+        try:
+            import json
+            response = client.get_secret_value(SecretId=f"{self.secret_name}/ssh-keys/{key_name}")
+            secret = json.loads(response['SecretString'])
+            return secret.get('metadata', {})
+        except Exception as e:
+            logger.debug(f"Metadata for SSH key {key_name} not found in AWS: {e}")
+            return None
+    
+    def set_ssh_key_metadata(self, key_name: str, metadata: dict) -> bool:
+        client = self._get_client()
+        if not client:
+            return False
+        
+        try:
+            import json
+            response = client.get_secret_value(SecretId=f"{self.secret_name}/ssh-keys/{key_name}")
+            secret_data = json.loads(response['SecretString'])
+            secret_data['metadata'] = metadata
+            
+            client.update_secret(
+                SecretId=f"{self.secret_name}/ssh-keys/{key_name}",
+                SecretString=json.dumps(secret_data)
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save metadata for SSH key {key_name} to AWS: {e}")
+            return False
+    
+    def scan_ssh_keys_directory(self, directory: str) -> list[dict]:
+        from pathlib import Path
+        import json
+        
+        keys_dir = Path(directory)
+        if not keys_dir.exists():
+            logger.warning(f"SSH keys directory {directory} does not exist")
+            return []
+        
+        imported_keys = []
+        config_file = keys_dir / "config.json"
+        metadata_map = {}
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    config_data = json.load(f)
+                    metadata_map = config_data.get('keys', {})
+                logger.info(f"Loaded metadata for {len(metadata_map)} keys from config.json")
+            except Exception as e:
+                logger.warning(f"Failed to load config.json: {e}")
+        
+        for key_file in keys_dir.iterdir():
+            if key_file.is_file() and not key_file.name.endswith('.pub') and key_file.name != 'config.json':
+                try:
+                    key_name = key_file.name
+                    private_key = key_file.read_text()
+                    
+                    pub_file = keys_dir / f"{key_name}.pub"
+                    public_key = None
+                    if pub_file.exists():
+                        public_key = pub_file.read_text().strip()
+                    
+                    metadata = metadata_map.get(key_name, {})
+                    
+                    if self.set_ssh_key(key_name, private_key, public_key):
+                        if metadata:
+                            self.set_ssh_key_metadata(key_name, metadata)
+                        
+                        imported_keys.append({
+                            'key_name': key_name,
+                            'has_public_key': public_key is not None,
+                            'metadata': metadata
+                        })
+                        logger.info(f"Imported SSH key {key_name} to AWS")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to import SSH key {key_file.name}: {e}")
+        
+        return imported_keys
+    
+    def get_servers_config(self) -> Optional[dict]:
+        client = self._get_client()
+        if not client:
+            return None
+        
+        try:
+            import json
+            response = client.get_secret_value(SecretId=f"{self.secret_name}/servers")
+            return json.loads(response['SecretString'])
+        except Exception as e:
+            logger.debug(f"Servers config not found in AWS: {e}")
+            return None
+    
+    def set_servers_config(self, config: dict) -> bool:
+        client = self._get_client()
+        if not client:
+            return False
+        
+        try:
+            import json
+            try:
+                client.update_secret(
+                    SecretId=f"{self.secret_name}/servers",
+                    SecretString=json.dumps(config)
+                )
+            except:
+                client.create_secret(
+                    Name=f"{self.secret_name}/servers",
+                    SecretString=json.dumps(config)
+                )
+            logger.info("Servers config saved to AWS")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save servers config to AWS: {e}")
+            return False
 
 
 def get_vault_provider() -> VaultProvider:

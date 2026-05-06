@@ -34,24 +34,26 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/data        # servers.json (fallback)
-      - ./keys:/keys        # SSH ключи
-    environment:
-            DATA_DIR: /data
+        volumes:
+      - ./data:/data        # servers.json (fallback only)
+      - ./keys:/keys        # SSH ключи (только для импорта при старте)
+        environment:
+      DATA_DIR: /data
       KEYS_DIR: /keys
       
-      # Vault Configuration - HashiCorp Vault by default
-      # Токены будут автоматически сгенерированы и сохранены в Vault
-      # Можно задать через переменные окружения для первого запуска:
-      # MCP_USER_TOKEN: "your-custom-user-token"
-      # MCP_ADMIN_TOKEN: "your-custom-admin-token"
-      # WEB_UI_TOKEN: "your-custom-webui-token"
+      # Vault Configuration - HashiCorp Vault (REQUIRED)
+      # All SSH keys and secrets are stored in Vault
+      # Local storage is only used as fallback for server configs
       
-      VAULT_TYPE: "hashicorp"  # Используется по умолчанию
+      VAULT_TYPE: "hashicorp"  # hashicorp (default) | aws | local (not recommended)
       VAULT_ADDR: "http://vault:8200"
       VAULT_TOKEN: "root-token-change-me"  # !! Change in production !!
       VAULT_SECRET_PATH: "secret/data/docker-mcp-hub"
+      
+      # Access tokens (optional - will be auto-generated if not set)
+      # MCP_USER_TOKEN: "your-custom-user-token"
+      # MCP_ADMIN_TOKEN: "your-custom-admin-token"
+      # WEB_UI_TOKEN: "your-custom-webui-token"
       
       # To use Local File Storage instead, set:
       # VAULT_TYPE: "local"

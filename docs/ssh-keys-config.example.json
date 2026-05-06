@@ -1,0 +1,21 @@
+{
+  "keys": {
+    "key_abc123": {
+      "server_id": "abc123",
+      "server_name": "Production Server",
+      "server_host": "prod.example.com",
+      "created_at": "2024-01-01T00:00:00Z",
+      "mcp_hub_hostname": "docker-mcp-hub",
+      "description": "SSH key for production server access"
+    },
+    "key_def456": {
+      "server_id": "def456",
+      "server_name": "Staging Server",
+      "server_host": "staging.example.com",
+      "created_at": "2024-01-02T00:00:00Z",
+      "mcp_hub_hostname": "docker-mcp-hub",
+      "description": "SSH key for staging environment"
+    }
+  }
+}
+</contents>

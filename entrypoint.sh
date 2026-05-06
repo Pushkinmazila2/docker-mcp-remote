@@ -82,6 +82,26 @@ wait_for_vault
 # Инициализируем Vault
 init_vault
 
+# Импортируем SSH ключи из директории в Vault (если есть)
+import_ssh_keys() {
+    if [ "$VAULT_TYPE" = "local" ]; then
+        echo "⚠️  Skipping SSH keys import (local storage mode)"
+        return 0
+    fi
+    
+    if [ -d "$KEYS_DIR" ] && [ "$(ls -A $KEYS_DIR 2>/dev/null)" ]; then
+        echo "🔑 Importing SSH keys from $KEYS_DIR to Vault..."
+        python -m app.import_ssh_keys import "$KEYS_DIR" || {
+            echo "⚠️  Failed to import SSH keys, continuing anyway..."
+        }
+    else
+        echo "ℹ️  No SSH keys found in $KEYS_DIR"
+    fi
+}
+
+# Импортируем ключи
+import_ssh_keys
+
 # Запускаем приложение
 echo "🎯 Starting application..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000
