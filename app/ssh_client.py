@@ -24,7 +24,7 @@ def ssh_connect(server: ServerConfig, bearer_token: str = None) -> Generator[par
         "timeout": 10,
     }
 
-        try:
+    try:
         if server.auth_type == ServerAuthType.PASSWORD:
             connect_kwargs["password"] = server.password
         elif server.auth_type in (ServerAuthType.KEY_PATH, ServerAuthType.GENERATE_KEY):
