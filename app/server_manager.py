@@ -183,7 +183,7 @@ def add_server(req: AddServerRequest, bearer_token: Optional[str] = None) -> Ser
     elif req.auth_type == ServerAuthType.KEY_PATH:
         final_key_path = req.key_path
     
-        elif req.auth_type == ServerAuthType.GENERATE_KEY:
+    elif req.auth_type == ServerAuthType.GENERATE_KEY:
         # Генерируем SSH ключ без установки
         key_name = f"key_{server_id}"
         private_key_path = KEYS_DIR / key_name
