@@ -34,10 +34,10 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
-        volumes:
+    volumes:
       - ./data:/data        # servers.json (fallback only)
       - ./keys:/keys        # SSH ключи (только для импорта при старте)
-        environment:
+    environment:
       DATA_DIR: /data
       KEYS_DIR: /keys
       
