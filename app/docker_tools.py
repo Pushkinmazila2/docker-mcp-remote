@@ -2,6 +2,7 @@
 Определения MCP-инструментов и их исполнение.
 Каждый инструмент — словарь в формате MCP tools/list + функция-обработчик.
 """
+import json
 from typing import Optional
 from .models import AddServerRequest, ServerAuthType
 from . import server_manager, ssh_client
@@ -137,6 +138,30 @@ TOOL_SCHEMAS = {
             "required": ["topic"],
         },
     },
+    "inspect_container": {
+        "name": "inspect_container",
+        "description": "Get detailed low-level metadata of a Docker container (networks, mounts, env, healthcheck)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "server_id": {"type": "string", "description": "Server ID"},
+                "container": {"type": "string", "description": "Container name or ID"},
+            },
+            "required": ["server_id", "container"],
+        },
+    },
+    "get_container_stats": {
+        "name": "get_container_stats",
+        "description": "Get resource usage live snapshot (CPU, Memory, Network, Disk I/O) for a container",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "server_id": {"type": "string", "description": "Server ID"},
+                "container": {"type": "string", "description": "Container name or ID"},
+            },
+            "required": ["server_id", "container"],
+        },
+    },
 }
 
 
@@ -266,6 +291,46 @@ def handle_get_help(args: dict) -> dict:
         "topic": topic,
         "help": help_text
     }
+    
+def handle_inspect_container(args: dict) -> dict:
+    bearer_token = args.get("_bearer_token")
+    server = _get_server(args["server_id"], bearer_token)
+    
+    # Вызываем клиент. Ожидаем, что он возвращает dict или валидный JSON-текст
+    raw_inspect = ssh_client.docker_inspect_container(server, args["container"], bearer_token)
+    
+    # Если клиент вернул строку, парсим её для корректной работы sanitize_response
+    if isinstance(raw_inspect, str):
+        try:
+            raw_inspect = json.loads(raw_inspect)
+        except json.JSONDecodeError:
+            pass
+
+    return sanitize_response({
+        "server_id": args["server_id"],
+        "container": args["container"],
+        "inspect_data": raw_inspect
+    })
+
+
+def handle_get_container_stats(args: dict) -> dict:
+    bearer_token = args.get("_bearer_token")
+    server = _get_server(args["server_id"], bearer_token)
+    
+    # Клиент должен выполнить команду: docker stats --no-stream --format "json" <container>
+    stats_data = ssh_client.docker_container_stats(server, args["container"], bearer_token)
+    
+    if isinstance(stats_data, str):
+        try:
+            stats_data = json.loads(stats_data)
+        except json.JSONDecodeError:
+            pass
+
+    return sanitize_response({
+        "server_id": args["server_id"],
+        "container": args["container"],
+        "stats": stats_data
+    })
 
 
 # ── Dispatch table ───────────────────────────────────────────────────────────
