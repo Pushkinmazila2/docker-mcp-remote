@@ -105,6 +105,8 @@ TOOLS_BY_LEVEL: dict[AuthLevel, list[str]] = {
         "view_logs",
         "read_file",
         "get_help",
+        "inspect_container",
+        "get_container_stats",
     ],
     AuthLevel.ADMIN: [
         "list_servers",
@@ -116,6 +118,8 @@ TOOLS_BY_LEVEL: dict[AuthLevel, list[str]] = {
         "read_file",
         "exec_command",
         "get_help",
+        "inspect_container",
+        "get_container_stats",
     ],
 }
 
