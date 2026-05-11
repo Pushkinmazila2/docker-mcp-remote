@@ -1,5 +1,6 @@
 services:
-  # Основной сервис HashiCorp Vault
+  # Сервис HashiCorp Vault
+  services:
   vault:
     image: hashicorp/vault:1.15
     container_name: docker-mcp-vault
@@ -8,67 +9,53 @@ services:
       - "8200:8200"
     volumes:
       - ./vault/data:/vault/data
-      - ./vault/config:/vault/config
       - ./vault/logs:/vault/logs
     environment:
       VAULT_ADDR: "http://127.0.0.1:8200"
+      # Передаем настройки напрямую через переменную окружения Vault
+      VAULT_LOCAL_CONFIG: '{"storage": {"file": {"path": "/vault/data"}}, "listener": {"tcp": {"address": "0.0.0.0:8200", "tls_disable": 1}}, "disable_mlock": true}'
     cap_add:
       - IPC_LOCK
-    # Пишем конфиг прямо в команду, чтобы не создавать отдельный файл vault.hcl
-    command: >
-      server -config=- -inline='
-        storage "file" { path = "/vault/data" }
-        listener "tcp" { address = "0.0.0.0:8200" \n tls_disable = 1 }
-        disable_mlock = true
-      '
-    healthcheck:
-      test: ["CMD", "vault", "status"]
-      interval: 5s
-      timeout: 2s
-      retries: 3
+    command: server
 
-  # Сервис автоматической инициализации и распечатывания
   vault-unsealer:
     image: hashicorp/vault:1.15
     container_name: docker-mcp-vault-unsealer
     restart: unless-stopped
     volumes:
-      # Папка для сохранения ключей на хост (скройте ее в продакшене!)
       - ./vault/init-keys:/vault/init-keys
     environment:
       VAULT_ADDR: "http://vault:8200"
     depends_on:
-      vault:
-        condition: service_started
-    entrypoint: /bin/sh -c
+      - vault
+    entrypoint: ["/bin/sh", "-c"]
     command: >
-      "
-      KEYS_FILE='/vault/init-keys/keys.json'
+      '
+      KEYS_FILE="/vault/init-keys/keys.json"
 
-      # Ждем, пока Vault начнет отвечать по сети
-      until vault status -address=http://vault:8200 2>&1 | grep -q 'unsealed\|sealed'; do
-        echo 'Ожидание запуска Vault...'
-        sleep 2
-      done
-
-      # Инициализация, если файл с ключами еще не создан
-      if [ ! -f \"$$KEYS_FILE\" ]; then
-        echo 'Инициализация Vault...'
-        mkdir -p /vault/init-keys
-        vault operator init -address=http://vault:8200 -format=json -key-shares=1 -key-threshold=1 > \"$$KEYS_FILE\"
-        echo 'Vault успешно инициализирован. Ключи сохранены.'
-      fi
-
-      # Цикл автоматического распечатывания при перезапусках
       while true; do
-        if vault status -address=http://vault:8200 | grep -q 'Sealed.*true'; then
-          echo 'Vault заблокирован (sealed). Распечатываю...'
-          UNSEAL_KEY=$$(cat \"$$KEYS_FILE\" | jq -r '.unseal_keys_b64[0]')
-          vault operator unseal -address=http://vault:8200 \"$$UNSEAL_KEY\"
+        STATUS=$(vault status -address=http://vault:8200 2>&1)
+        echo "$STATUS" | grep -q "unsealed" && sleep 15 && continue
+
+        if echo "$STATUS" | grep -q "sealed.*true"; then
+          echo "Vault заблокирован. Распечатываю..."
+          UNSEAL_KEY=$(cat "$KEYS_FILE" | grep -o '"unseal_keys_b64": *\["[^"]*"' | sed "s/.*\"\(.*\)\"/\1/")
+          vault operator unseal -address=http://vault:8200 "$UNSEAL_KEY"
+        elif echo "$STATUS" | grep -q "Vault is not initialized"; then
+          if [ ! -f "$KEYS_FILE" ]; then
+            echo "Инициализация Vault..."
+            mkdir -p /vault/init-keys
+            vault operator init -address=http://vault:8200 -key-shares=1 -key-threshold=1 -format=json > "$KEYS_FILE"
+            echo "Инициализация успешна."
+          else
+            echo "Файл ключей найден, но Vault не инициализирован. Проверьте данные!"
+          fi
+        else
+          echo "Ожидание доступности API Vault..."
         fi
-        sleep 10
+        sleep 5
       done
-      "
+      '
 
 
   mcp-hub:
