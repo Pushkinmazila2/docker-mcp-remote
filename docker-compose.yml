@@ -23,9 +23,9 @@ services:
     volumes:
       - ./vault/init-keys:/vault/init-keys
     environment:
-      VAULT_ADDR: "http://docker-mcp-vault:8200"
+      VAULT_ADDR: "http://vault:8200"
     depends_on:
-      - docker-mcp-vault
+      - vault
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "
